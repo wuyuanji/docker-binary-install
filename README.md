@@ -55,7 +55,9 @@ curl -SL https://github.com/docker/compose/releases/latest/download/docker-compo
 chmod +x /usr/local/bin/docker-compose
 ```
 
-### 4. 配置 systemd 服务（开机自启）
+### 4. 创建 systemd 服务（开机自启）
+
+> 二进制解压安装的 Docker **默认不会自动生成 systemd 服务文件**，需手动创建 `docker.service`。
 
 创建 `/etc/systemd/system/docker.service`：
 
@@ -63,16 +65,14 @@ chmod +x /usr/local/bin/docker-compose
 [Unit]
 Description=Docker Application Container Engine
 Documentation=https://docs.docker.com
-After=network-online.target docker.socket containerd.service
+After=network-online.target firewalld.service containerd.service
 Wants=network-online.target
-Requires=docker.socket containerd.service
 
 [Service]
 Type=notify
 ExecStart=/usr/bin/dockerd
-ExecStartPost=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
 ExecReload=/bin/kill -s HUP $MAINPID
-TimeoutStartSec=0
+TimeoutSec=0
 RestartSec=2
 Restart=always
 LimitNOFILE=infinity
@@ -87,24 +87,46 @@ OOMScoreAdjust=-500
 WantedBy=multi-user.target
 ```
 
-> 注意：`ExecStart` 和 `ExecStartPost` 需根据实际情况调整，推荐先手动测试 `dockerd` 是否能正常启动，再固化到 systemd。
+### 5. 配置 Docker Daemon 参数（可选但建议）
 
-### 5. 启动并验证
+创建 `/etc/docker/daemon.json`，配置镜像加速、日志切分及驱动：
 
 ```bash
-# 加载 systemd 配置
+mkdir -p /etc/docker
+cat << 'EOF' > /etc/docker/daemon.json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m",
+    "max-file": "3"
+  }
+}
+EOF
+```
+
+### 6. 重载 systemd 并启动 Docker
+
+```bash
+# 重新加载 systemd 配置
 systemctl daemon-reload
 
-# 启动 Docker
-systemctl start docker
+# 设置开机自启并立即启动
+systemctl enable --now docker
 
-# 设置开机自启
-systemctl enable docker
+# 检查运行状态
+systemctl status docker
+```
 
-# 验证
+### 7. 验证与加载镜像
+
+```bash
+# 验证 Docker 正常运行
 docker --version
 docker-compose --version
 docker run hello-world
+
+# 导入镜像（如 MiniIO 同步镜像）
+docker load -i miniorsync.tar.gz
 ```
 
 ---
